@@ -74,13 +74,30 @@ class iBroadcastTUI(App):
             return
         
         try:
+            # Show authenticating message
+            self.notify("Authenticating with iBroadcast...", severity="information")
+            
             result = self.api_client.authenticate()
             if result["status"] == "success":
-                self.notify("Connected to iBroadcast successfully!", severity="information")
+                self.notify(f"Connected to iBroadcast! {result['message']}", severity="information")
+                # Try to fetch library to show we have real data
+                self._load_library()
             else:
                 self.notify(f"Authentication failed: {result['message']}", severity="error")
         except Exception as e:
             self.notify(f"Connection failed: {e}", severity="error")
+    
+    def _load_library(self) -> None:
+        """Load and display library information."""
+        try:
+            result = self.api_client.get_library()
+            if result["status"] == "success":
+                # TODO: Display actual library data
+                self.notify("Library loaded successfully!", severity="information")
+            else:
+                self.notify(f"Failed to load library: {result['message']}", severity="error")
+        except Exception as e:
+            self.notify(f"Library loading failed: {e}", severity="error")
     
     def on_mount(self) -> None:
         """Called when the app starts."""
