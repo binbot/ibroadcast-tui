@@ -10,7 +10,14 @@ A terminal user interface (TUI) for the iBroadcast music service.
    cd ibroadcast-tui
    ```
 
-2. Install dependencies with Poetry:
+2. Install dependencies:
+   
+   **Option 1: pip (Recommended for most users)**
+   ```bash
+   pip install -r requirements.txt
+   ```
+   
+   **Option 2: Poetry (For developers)**
    ```bash
    poetry install
    ```
@@ -24,16 +31,33 @@ A terminal user interface (TUI) for the iBroadcast music service.
 ## Usage
 
 Run the application:
+
+**pip method:**
+```bash
+python -m ibroadcast_tui
+```
+
+**Poetry method:**
 ```bash
 poetry run python -m ibroadcast_tui
 ```
 
 ## Development
 
-- **Run tests**: `poetry run pytest`
-- **Lint code**: `poetry run ruff check .`
-- **Format code**: `poetry run ruff format .`
-- **Type check**: `poetry run mypy src/`
+### Setup Development Environment
+```bash
+# pip method:
+pip install -r requirements-dev.txt
+
+# Poetry method:
+poetry install --with dev
+```
+
+### Development Commands
+- **Run tests**: `poetry run pytest` or `pytest`
+- **Lint code**: `poetry run ruff check .` or `ruff check .`
+- **Format code**: `poetry run ruff format .` or `ruff format .`
+- **Type check**: `poetry run mypy src/` or `mypy src/`
 
 ## License
 
