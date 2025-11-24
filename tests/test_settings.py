@@ -25,9 +25,13 @@ class TestSettings:
         assert test_settings.api_url == 'https://test.api.com'
         assert test_settings.debug is True
     
+    @patch.dict(os.environ, {}, clear=True)
     def test_validate_missing_credentials(self) -> None:
         """Test validation with missing credentials."""
         test_settings = Settings()
+        # Manually set to None to simulate missing environment variables
+        test_settings.client_id = None
+        test_settings.client_secret = None
         assert test_settings.validate() is False
     
     @patch.dict(os.environ, {

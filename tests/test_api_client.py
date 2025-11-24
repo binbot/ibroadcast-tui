@@ -14,9 +14,12 @@ class TestiBroadcastClient:
         assert client.base_url == "https://api.ibroadcast.com"
         mock_client.assert_called_once()
     
-    def test_authenticate_placeholder(self) -> None:
-        """Test authentication placeholder."""
+    def test_authenticate_missing_credentials(self) -> None:
+        """Test authentication with missing credentials."""
+        # Create client with missing credentials
         client = iBroadcastClient()
+        client.client_id = None
+        client.client_secret = None
         result = client.authenticate()
         assert result["status"] == "error"
         assert "Missing client credentials" in result["message"]

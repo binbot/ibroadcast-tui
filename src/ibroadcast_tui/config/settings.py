@@ -22,8 +22,12 @@ class Settings:
         self.debug: bool = os.getenv("DEBUG", "false").lower() == "true"
     
     def validate(self) -> bool:
-        """Validate that required settings are present."""
-        return bool(self.client_id and self.client_secret)
+        """Validate that required settings are present and not placeholder values."""
+        placeholder_values = ["your_client_id_here", "your_client_secret_here", "", None]
+        return (
+            self.client_id not in placeholder_values 
+            and self.client_secret not in placeholder_values
+        )
 
 # Global settings instance
 settings = Settings()
