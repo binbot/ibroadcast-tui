@@ -1,9 +1,8 @@
 """Main UI application for iBroadcast TUI."""
 
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import Header, Footer, Static, Button, ListView, ListItem, Label
-from textual.reactive import reactive
+from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
+from textual.widgets import Header, Footer, Static, Button, ListView, ListItem, Label, TabbedContent, TabPane
 
 from ..api.client import iBroadcastClient
 from ..config.settings import settings
@@ -14,76 +13,112 @@ class iBroadcastTUI(App):
     CSS = """
     Screen {
         layout: vertical;
+        background: $surface-darken-3;
     }
-    
+
     .main-container {
         height: 100%;
     }
-    
+
     .sidebar {
         width: 25%;
-        border-right: solid $primary;
+        border-right: solid $primary-darken-1;
+        background: $surface-darken-2;
     }
-    
+
     .content {
         width: 75%;
+        background: $surface-darken-3;
     }
-    
-    .welcome {
-        text-align: center;
-        padding: 1;
-    }
-    
-    /* Retro terminal styling */
+
+    /* Retro terminal color scheme */
     Header {
-        background: $primary-darken-2;
+        background: $success-darken-3;
         color: $text;
         text-style: bold;
+        border-bottom: solid $primary;
     }
-    
+
     Footer {
-        background: $primary-darken-2;
+        background: $surface-darken-2;
         color: $text-muted;
+        border-top: solid $primary-darken-1;
     }
-    
+
     Button {
-        background: $primary;
+        background: $primary-darken-1;
         color: $text;
+        border: solid $primary;
+    }
+
+    Button:hover {
+        background: $primary;
         border: solid $primary-lighten-1;
     }
-    
-    Button:hover {
-        background: $primary-lighten-1;
+
+    /* Tab styling */
+    TabbedContent {
+        background: $surface-darken-3;
     }
-    
-    ListView {
-        background: $surface;
-        color: $text;
-        border: solid $primary-darken-1;
+
+    TabPane {
+        background: $surface-darken-3;
+        padding: 1;
+        border: solid $primary-darken-2;
+        border-radius: 1;
     }
-    
-    ListItem {
-        color: $text;
-    }
-    
-    ListItem:hover {
-        background: $primary-darken-3;
-    }
-    
-    .header {
-        color: $text;
+
+    /* Content styling */
+    .section-header {
+        color: $accent;
         text-style: bold;
         margin-bottom: 1;
+        border-bottom: solid $primary-darken-1;
     }
-    
-    .stat {
+
+    .album-item, .artist-item, .playlist-item, .track-item {
         color: $text;
-        margin-left: 2;
+        margin-left: 1;
+        margin-bottom: 0;
     }
-    
-    .placeholder {
+
+    .album-item:hover, .artist-item:hover, .playlist-item:hover, .track-item:hover {
+        background: $primary-darken-3;
+        color: $text;
+    }
+
+    .message {
         color: $text-muted;
         text-style: italic;
+    }
+
+    /* Welcome screen */
+    .welcome {
+        text-align: center;
+        padding: 2;
+        color: $text;
+        text-style: bold;
+    }
+
+    /* Status indicators */
+    .status-playing {
+        color: $success;
+        text-style: bold;
+    }
+
+    .status-paused {
+        color: $warning;
+    }
+
+    .status-stopped {
+        color: $error;
+    }
+
+    /* Scrollable areas */
+    ScrollableContainer {
+        height: 100%;
+        border: solid $primary-darken-2;
+        background: $surface-darken-3;
     }
     """
     
@@ -113,19 +148,16 @@ class iBroadcastTUI(App):
                 
                 with Vertical(classes="content", id="content-container"):
                     if self.library_data:
-                        # Show music library stats
-                        albums = len(self.library_data.get("albums", {}))
-                        artists = len(self.library_data.get("artists", {}))
-                        tracks = len(self.library_data.get("tracks", {}))
-                        playlists = len(self.library_data.get("playlists", {}))
-
-                        yield Static("🎵 iBroadcast Library Loaded!", classes="header")
-                        yield Static(f"📀 {albums} albums", classes="stat")
-                        yield Static(f"🎤 {artists} artists", classes="stat")
-                        yield Static(f"🎵 {tracks} tracks", classes="stat")
-                        yield Static(f"📋 {playlists} playlists", classes="stat")
-                        yield Static("", classes="spacer")
-                        yield Static("🎨 Retro styling and detailed views coming soon!", classes="placeholder")
+                        # Show detailed music library with tabs
+                        with TabbedContent():
+                            with TabPane("📀 Albums", id="albums-tab"):
+                                yield self._create_albums_view()
+                            with TabPane("🎤 Artists", id="artists-tab"):
+                                yield self._create_artists_view()
+                            with TabPane("📋 Playlists", id="playlists-tab"):
+                                yield self._create_playlists_view()
+                            with TabPane("🎵 Tracks", id="tracks-tab"):
+                                yield self._create_tracks_view()
                     else:
                         # Show welcome screen
                         yield Static("Welcome to iBroadcast TUI", id="welcome")
@@ -238,7 +270,177 @@ class iBroadcastTUI(App):
         except Exception as e:
             self.notify(f"Library loading failed: {e}", severity="error")
 
+    def _create_albums_view(self) -> Static:
+        """Create the albums view."""
+        if not self.library_data or "albums" not in self.library_data:
+            return Static("No albums data available", classes="message")
 
+        albums = self.library_data["albums"]
+        if not albums:
+            return Static("No albums found", classes="message")
+
+        # Create content as a single multi-line string
+        lines = []
+        lines.append(f"📀 Albums ({len(albums)})")
+
+        # Sort albums by name (album data is stored as lists)
+        def get_album_name(item):
+            album_id, album_data = item
+            if isinstance(album_data, list) and len(album_data) > 0:
+                return str(album_data[0]).lower()
+            return ""
+
+        sorted_albums = sorted(albums.items(), key=get_album_name)
+
+        # Display albums (limit for performance)
+        for album_id, album_data in sorted_albums[:30]:  # Reduced limit
+            if isinstance(album_data, list) and len(album_data) >= 3:
+                album_name = album_data[0]
+                track_ids = album_data[1] if len(album_data) > 1 else []
+                artist_id = album_data[2]
+                year = album_data[3] if len(album_data) > 3 else "Unknown"
+
+                # Get artist name
+                artist_name = "Unknown Artist"
+                if "artists" in self.library_data:
+                    artist_data = self.library_data["artists"].get(str(artist_id))
+                    if artist_data and isinstance(artist_data, dict):
+                        artist_name = artist_data.get("name", "Unknown Artist")
+
+                tracks_count = len(track_ids)
+                lines.append(f"  {album_name} - {artist_name} ({year}) • {tracks_count} tracks")
+
+        if len(sorted_albums) > 30:
+            lines.append(f"  ... and {len(sorted_albums) - 30} more albums")
+
+        # Create single Static widget with all content
+        content = "\n".join(lines)
+        return Static(content, classes="albums-content")
+
+    def _create_artists_view(self) -> Static:
+        """Create the artists view."""
+        if not self.library_data or "artists" not in self.library_data:
+            return Static("No artists data available", classes="message")
+
+        artists = self.library_data["artists"]
+        if not artists:
+            return Static("No artists found", classes="message")
+
+        # Create content as a single multi-line string
+        lines = []
+        lines.append(f"🎤 Artists ({len(artists)})")
+
+        # Sort artists by name (artist data is stored as lists)
+        def get_artist_name(item):
+            artist_id, artist_data = item
+            if isinstance(artist_data, list) and len(artist_data) > 0:
+                return str(artist_data[0]).lower()
+            return ""
+
+        sorted_artists = sorted(artists.items(), key=get_artist_name)
+
+        # Display artists (limit for performance)
+        for artist_id, artist_data in sorted_artists[:30]:
+            if isinstance(artist_data, list) and len(artist_data) >= 2:
+                artist_name = artist_data[0]  # Artist name
+                track_ids = artist_data[1] if len(artist_data) > 1 else []  # Track IDs
+                tracks_count = len(track_ids) if isinstance(track_ids, list) else 0
+
+                lines.append(f"  {artist_name} • {tracks_count} tracks")
+
+        if len(sorted_artists) > 30:
+            lines.append(f"  ... and {len(sorted_artists) - 30} more artists")
+
+        # Create single Static widget with all content
+        content = "\n".join(lines)
+        return Static(content, classes="artists-content")
+
+    def _create_playlists_view(self) -> Static:
+        """Create the playlists view."""
+        if not self.library_data or "playlists" not in self.library_data:
+            return Static("No playlists data available", classes="message")
+
+        playlists = self.library_data["playlists"]
+        if not playlists:
+            return Static("No playlists found", classes="message")
+
+        # Create content as a single multi-line string
+        lines = []
+        lines.append(f"📋 Playlists ({len(playlists)})")
+
+        # Sort playlists by name (playlist data is stored as lists)
+        def get_playlist_name(item):
+            playlist_id, playlist_data = item
+            if isinstance(playlist_data, list) and len(playlist_data) > 0:
+                return str(playlist_data[0]).lower()
+            return ""
+
+        sorted_playlists = sorted(playlists.items(), key=get_playlist_name)
+
+        # Display playlists
+        for playlist_id, playlist_data in sorted_playlists:
+            if isinstance(playlist_data, list) and len(playlist_data) >= 2:
+                playlist_name = playlist_data[0]  # Playlist name
+                track_ids = playlist_data[1] if len(playlist_data) > 1 else []  # Track IDs
+                tracks_count = len(track_ids) if isinstance(track_ids, list) else 0
+
+                lines.append(f"  {playlist_name} • {tracks_count} tracks")
+
+        # Create single Static widget with all content
+        content = "\n".join(lines)
+        return Static(content, classes="playlists-content")
+
+    def _create_tracks_view(self) -> Static:
+        """Create the tracks view."""
+        if not self.library_data or "tracks" not in self.library_data:
+            return Static("No tracks data available", classes="message")
+
+        tracks = self.library_data["tracks"]
+        if not tracks:
+            return Static("No tracks found", classes="message")
+
+        # Create content as a single multi-line string
+        lines = []
+        lines.append(f"🎵 Tracks ({len(tracks)})")
+
+        # Sort tracks by title (track data is stored as lists)
+        def get_track_title(item):
+            track_id, track_data = item
+            if isinstance(track_data, list) and len(track_data) >= 3:
+                return str(track_data[2]).lower()  # Title is at index 2
+            return ""
+
+        sorted_tracks = sorted(tracks.items(), key=get_track_title)
+
+        # Display tracks (limit for performance)
+        for track_id, track_data in sorted_tracks[:50]:
+            if isinstance(track_data, list) and len(track_data) >= 7:
+                track_title = track_data[2]  # Title at index 2
+                artist_id = track_data[6]    # Artist ID at index 6
+                album_id = track_data[5]     # Album ID at index 5
+
+                # Get artist name
+                artist_name = "Unknown Artist"
+                if "artists" in self.library_data:
+                    artist_data = self.library_data["artists"].get(str(artist_id))
+                    if artist_data and isinstance(artist_data, list) and len(artist_data) > 0:
+                        artist_name = artist_data[0]
+
+                # Get album name
+                album_name = "Unknown Album"
+                if "albums" in self.library_data:
+                    album_data = self.library_data["albums"].get(str(album_id))
+                    if album_data and isinstance(album_data, list) and len(album_data) > 0:
+                        album_name = album_data[0]
+
+                lines.append(f"  {track_title} - {artist_name} ({album_name})")
+
+        if len(sorted_tracks) > 50:
+            lines.append(f"  ... and {len(sorted_tracks) - 50} more tracks")
+
+        # Create single Static widget with all content
+        content = "\n".join(lines)
+        return Static(content, classes="tracks-content")
 
     def on_mount(self) -> None:
         """Called when the app starts."""
