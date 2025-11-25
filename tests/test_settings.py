@@ -35,8 +35,8 @@ class TestSettings:
         assert test_settings.validate() is False
     
     @patch.dict(os.environ, {
-        'IBROADCAST_CLIENT_ID': 'test_client_id',
-        'IBROADCAST_CLIENT_SECRET': 'test_client_secret'
+        'IBROADCAST_USERNAME': 'test@example.com',
+        'IBROADCAST_PASSWORD': 'test_password'
     })
     def test_validate_with_credentials(self) -> None:
         """Test validation with all credentials present."""

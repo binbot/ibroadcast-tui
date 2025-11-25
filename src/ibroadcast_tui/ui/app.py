@@ -73,13 +73,13 @@ class iBroadcastTUI(App):
     def connect_to_service(self) -> None:
         """Connect to iBroadcast service."""
         if not settings.validate():
-            self.notify("Please configure client credentials in .env file", severity="error")
+            self.notify("Please configure username and password in .env file", severity="error")
             return
-        
+
         try:
             # Show authenticating message
             self.notify("Authenticating with iBroadcast...", severity="information")
-            
+
             result = self.api_client.authenticate()
             if result["status"] == "success":
                 self.notify(f"Connected to iBroadcast! {result['message']}", severity="information")
@@ -145,4 +145,4 @@ class iBroadcastTUI(App):
     def on_mount(self) -> None:
         """Called when the app starts."""
         if not settings.validate():
-            self.notify("Client credentials not configured. Check .env file.", severity="warning")
+            self.notify("Username and password not configured. Check .env file.", severity="warning")

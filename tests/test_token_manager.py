@@ -35,24 +35,24 @@ class TestTokenManager:
     def test_save_and_load_token(self, mock_settings: Mock, mock_home: patch) -> None:
         """Test saving and loading token."""
         mock_home.return_value = self.temp_dir
-        mock_settings.client_id = "test_client"
-        
+        mock_settings.username = "test@example.com"
+
         token_manager = TokenManager()
         token_data = {
             "access_token": "test_token",
             "expires_in": 3600,
-            "client_id": "test_client"
+            "username": "test@example.com"
         }
-        
+
         # Save token
         token_manager.save_token(token_data)
-        
+
         # Load token
         loaded_token = token_manager.load_token()
-        
+
         assert loaded_token is not None
         assert loaded_token["access_token"] == "test_token"
-        assert loaded_token["client_id"] == "test_client"
+        assert loaded_token["username"] == "test@example.com"
         assert "expires_at" in loaded_token
     
     @patch('ibroadcast_tui.config.token_manager.Path.home')
@@ -69,7 +69,7 @@ class TestTokenManager:
         token_data = {
             "access_token": "test_token",
             "expires_at": time.time() + 3600,  # Expires in 1 hour
-            "client_id": "test_client"
+            "username": "test@example.com"
         }
         token_manager.save_token(token_data)
         
@@ -92,16 +92,16 @@ class TestTokenManager:
         
         token_manager = TokenManager()
         
-        # Save token for client1
+        # Save token for user1
         token_data = {
             "access_token": "test_token",
             "expires_at": time.time() + 3600,
-            "client_id": "client1"
+            "username": "user1@example.com"
         }
         token_manager.save_token(token_data)
         
-        # Mock settings to have different client_id
-        with patch('ibroadcast_tui.config.token_manager.settings.client_id', 'client2'):
+        # Mock settings to have different username
+        with patch('ibroadcast_tui.config.token_manager.settings.username', 'user2@example.com'):
             loaded_token = token_manager.load_token()
             assert loaded_token is None  # Should not load token for different client
     
