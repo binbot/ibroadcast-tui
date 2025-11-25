@@ -30,8 +30,8 @@ class TokenManager:
             if "expires_in" in token_data and "expires_at" not in token_data:
                 token_data["expires_at"] = time.time() + token_data["expires_in"]
             
-            # Add client_id for validation
-            token_data["client_id"] = settings.client_id
+            # Add username for validation
+            token_data["username"] = settings.username
             
             # Write to temporary file first, then move to avoid partial writes
             temp_file = self.token_file.with_suffix(".tmp")
@@ -54,8 +54,8 @@ class TokenManager:
             with open(self.token_file, "r", encoding="utf-8") as f:
                 token_data = json.load(f)
             
-            # Validate token belongs to current client
-            if token_data.get("client_id") != settings.client_id:
+            # Validate token belongs to current user
+            if token_data.get("username") != settings.username:
                 return None
             
             return token_data

@@ -32,6 +32,58 @@ class iBroadcastTUI(App):
         text-align: center;
         padding: 1;
     }
+    
+    /* Retro terminal styling */
+    Header {
+        background: $primary-darken-2;
+        color: $text;
+        text-style: bold;
+    }
+    
+    Footer {
+        background: $primary-darken-2;
+        color: $text-muted;
+    }
+    
+    Button {
+        background: $primary;
+        color: $text;
+        border: solid $primary-lighten-1;
+    }
+    
+    Button:hover {
+        background: $primary-lighten-1;
+    }
+    
+    ListView {
+        background: $surface;
+        color: $text;
+        border: solid $primary-darken-1;
+    }
+    
+    ListItem {
+        color: $text;
+    }
+    
+    ListItem:hover {
+        background: $primary-darken-3;
+    }
+    
+    .header {
+        color: $text;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    
+    .stat {
+        color: $text;
+        margin-left: 2;
+    }
+    
+    .placeholder {
+        color: $text-muted;
+        text-style: italic;
+    }
     """
     
     def __init__(self) -> None:
@@ -39,6 +91,7 @@ class iBroadcastTUI(App):
         super().__init__()
         self.api_client = iBroadcastClient()
         self.title = settings.app_name
+        self.library_data = None
     
     def compose(self) -> ComposeResult:
         """Create the main layout."""
@@ -57,8 +110,25 @@ class iBroadcastTUI(App):
                     )
                 
                 with Vertical(classes="content"):
-                    yield Static("Welcome to iBroadcast TUI", id="welcome")
-                    yield Button("Connect to iBroadcast", id="connect-btn")
+                    if self.library_data:
+                        # Show music library stats
+                        albums = len(self.library_data.get("albums", {}))
+                        artists = len(self.library_data.get("artists", {}))
+                        tracks = len(self.library_data.get("tracks", {}))
+                        playlists = len(self.library_data.get("playlists", {}))
+                        
+                        yield Static("🎵 iBroadcast Library Loaded!", classes="header")
+                        yield Static(f"📀 {albums} albums", classes="stat")
+                        yield Static(f"🎤 {artists} artists", classes="stat")
+                        yield Static(f"🎵 {tracks} tracks", classes="stat")
+                        yield Static(f"📋 {playlists} playlists", classes="stat")
+                        yield Static("", classes="spacer")
+                        yield Static("🎨 Retro styling and detailed views coming soon!", classes="placeholder")
+                    else:
+                        # Show welcome screen with connection buttons
+                        yield Static("Welcome to iBroadcast TUI", id="welcome")
+                        yield Button("Connect to iBroadcast", id="connect-btn")
+                        yield Button("Discover API Endpoints", id="discover-btn")
         
         yield Footer()
     
@@ -66,11 +136,13 @@ class iBroadcastTUI(App):
         """Handle button press events."""
         if event.button.id == "connect-btn":
             self.connect_to_service()
+        elif event.button.id == "discover-btn":
+            self.discover_endpoints()
     
     def connect_to_service(self) -> None:
         """Connect to iBroadcast service."""
         if not settings.validate():
-            self.notify("Please configure client credentials in .env file", severity="error")
+            self.notify("Please configure username and password in .env file", severity="error")
             return
         
         try:
@@ -87,19 +159,69 @@ class iBroadcastTUI(App):
         except Exception as e:
             self.notify(f"Connection failed: {e}", severity="error")
     
+    def discover_endpoints(self) -> None:
+        """Discover and display API endpoints."""
+        try:
+            self.notify("Discovering iBroadcast API endpoints...", severity="information")
+            result = self.api_client._discover_api_endpoints()
+            if result["status"] == "success":
+                endpoints = result["endpoints"]
+                available_endpoints = [ep for ep, info in endpoints.items() if info.get("available")]
+                
+                if available_endpoints:
+                    self.notify(f"Working endpoints: {', '.join(available_endpoints)}", severity="information")
+                else:
+                    self.notify("No working endpoints found. Check API credentials.", severity="warning")
+                    
+                # Show all tested endpoints
+                tested_endpoints = list(endpoints.keys())
+                self.notify(f"Tested endpoints: {', '.join(tested_endpoints)}", severity="information")
+            else:
+                self.notify(f"Endpoint discovery failed: {result.get('message', 'Unknown error')}", severity="error")
+        except Exception as e:
+            self.notify(f"Endpoint discovery failed: {e}", severity="error")
+    
     def _load_library(self) -> None:
         """Load and display library information."""
         try:
+            self.notify("Discovering iBroadcast API endpoints...", severity="information")
             result = self.api_client.get_library()
             if result["status"] == "success":
-                # TODO: Display actual library data
-                self.notify("Library loaded successfully!", severity="information")
+                endpoint = result.get("endpoint", "unknown")
+                data = result.get("data", {})
+                
+                # Store library data
+                self.library_data = data
+                
+                # Show success with data summary
+                if isinstance(data, dict) and data:
+                    albums_count = len(data.get("albums", {}))
+                    artists_count = len(data.get("artists", {}))
+                    tracks_count = len(data.get("tracks", {}))
+                    playlists_count = len(data.get("playlists", {}))
+                    
+                    self.notify(f"Library loaded! {albums_count} albums, {artists_count} artists, {tracks_count} tracks, {playlists_count} playlists", severity="information")
+                    
+                    # Refresh the UI to show data tabs
+                    self.refresh()
+                else:
+                    self.notify(f"Connected! Using endpoint: {endpoint}. No data structure available yet.", severity="information")
             else:
-                self.notify(f"Failed to load library: {result['message']}", severity="error")
+                message = result.get("message", "Unknown error")
+                self.notify(f"Failed to load library: {message}", severity="error")
+                
+                # Show discovery info if available
+                if "discovered" in result:
+                    discovery = result["discovered"]
+                    if discovery.get("status") == "success":
+                        available_endpoints = [ep for ep, info in discovery["endpoints"].items() if info.get("available")]
+                        if available_endpoints:
+                            self.notify(f"Available endpoints found: {', '.join(available_endpoints)}", severity="information")
+                        
         except Exception as e:
             self.notify(f"Library loading failed: {e}", severity="error")
     
     def on_mount(self) -> None:
         """Called when the app starts."""
         if not settings.validate():
-            self.notify("Client credentials not configured. Check .env file.", severity="warning")
+            self.notify("Username and password not configured. Check .env file.", severity="warning")
