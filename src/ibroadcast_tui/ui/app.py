@@ -59,6 +59,7 @@ class iBroadcastTUI(App):
                 with Vertical(classes="content"):
                     yield Static("Welcome to iBroadcast TUI", id="welcome")
                     yield Button("Connect to iBroadcast", id="connect-btn")
+                    yield Button("Discover API Endpoints", id="discover-btn")
         
         yield Footer()
     
@@ -66,6 +67,8 @@ class iBroadcastTUI(App):
         """Handle button press events."""
         if event.button.id == "connect-btn":
             self.connect_to_service()
+        elif event.button.id == "discover-btn":
+            self.discover_endpoints()
     
     def connect_to_service(self) -> None:
         """Connect to iBroadcast service."""
@@ -87,15 +90,55 @@ class iBroadcastTUI(App):
         except Exception as e:
             self.notify(f"Connection failed: {e}", severity="error")
     
+    def discover_endpoints(self) -> None:
+        """Discover and display API endpoints."""
+        try:
+            self.notify("Discovering iBroadcast API endpoints...", severity="information")
+            result = self.api_client._discover_api_endpoints()
+            if result["status"] == "success":
+                endpoints = result["endpoints"]
+                available_endpoints = [ep for ep, info in endpoints.items() if info.get("available")]
+                
+                if available_endpoints:
+                    self.notify(f"Working endpoints: {', '.join(available_endpoints)}", severity="information")
+                else:
+                    self.notify("No working endpoints found. Check API credentials.", severity="warning")
+                    
+                # Show all tested endpoints
+                tested_endpoints = list(endpoints.keys())
+                self.notify(f"Tested endpoints: {', '.join(tested_endpoints)}", severity="information")
+            else:
+                self.notify(f"Endpoint discovery failed: {result.get('message', 'Unknown error')}", severity="error")
+        except Exception as e:
+            self.notify(f"Endpoint discovery failed: {e}", severity="error")
+    
     def _load_library(self) -> None:
         """Load and display library information."""
         try:
+            self.notify("Discovering iBroadcast API endpoints...", severity="information")
             result = self.api_client.get_library()
             if result["status"] == "success":
-                # TODO: Display actual library data
-                self.notify("Library loaded successfully!", severity="information")
+                endpoint = result.get("endpoint", "unknown")
+                data = result.get("data", {})
+                
+                # Show success with endpoint info
+                if isinstance(data, dict) and data:
+                    data_keys = list(data.keys())[:5]  # Show first 5 keys
+                    self.notify(f"Connected! Using endpoint: {endpoint}. Data keys: {', '.join(data_keys)}", severity="information")
+                else:
+                    self.notify(f"Connected! Using endpoint: {endpoint}. No data structure available Yet.", severity="information")
             else:
-                self.notify(f"Failed to load library: {result['message']}", severity="error")
+                message = result.get("message", "Unknown error")
+                self.notify(f"Failed to load library: {message}", severity="error")
+                
+                # Show discovery info if available
+                if "discovered" in result:
+                    discovery = result["discovered"]
+                    if discovery.get("status") == "success":
+                        available_endpoints = [ep for ep, info in discovery["endpoints"].items() if info.get("available")]
+                        if available_endpoints:
+                            self.notify(f"Available endpoints found: {', '.join(available_endpoints)}", severity="information")
+                        
         except Exception as e:
             self.notify(f"Library loading failed: {e}", severity="error")
     

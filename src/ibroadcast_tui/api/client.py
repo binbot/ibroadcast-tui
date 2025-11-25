@@ -89,6 +89,42 @@ class iBroadcastClient:
         # Request new token
         return self._request_access_token()
     
+    def _discover_api_endpoints(self) -> Dict[str, Any]:
+        """Discover available API endpoints by testing common patterns."""
+        if not self.access_token:
+            return {"status": "error", "message": "Authentication required"}
+        
+        discovered_endpoints = {}
+        
+        # Test common endpoint patterns
+        common_endpoints = [
+            "/library",
+            "/v1/library", 
+            "/api/library",
+            "/tracks",
+            "/v1/tracks",
+            "/api/tracks",
+            "/user/library",
+            "/v1/user/library",
+            "/albums",
+            "/v1/albums",
+            "/playlists",
+            "/v1/playlists"
+        ]
+        
+        for endpoint in common_endpoints:
+            try:
+                response = self.client.get(endpoint)
+                if response.status_code != 404:
+                    discovered_endpoints[endpoint] = {
+                        "status_code": response.status_code,
+                        "available": response.status_code == 200
+                    }
+            except Exception:
+                discovered_endpoints[endpoint] = {"available": False}
+        
+        return {"status": "success", "endpoints": discovered_endpoints}
+    
     def get_library(self) -> Dict[str, Any]:
         """Get user's music library."""
         # Ensure we have a valid token
@@ -98,23 +134,33 @@ class iBroadcastClient:
                 return {"status": "error", "message": "Authentication required"}
         
         try:
-            # TODO: Replace with actual iBroadcast library endpoint
-            # This is a placeholder - need to find correct endpoint
-            response = self.client.get("/library")
-            response.raise_for_status()
+            # First, try to discover available endpoints
+            discovery = self._discover_api_endpoints()
+            if discovery["status"] == "success":
+                # Find working library endpoint
+                for endpoint, info in discovery["endpoints"].items():
+                    if info.get("available") and "library" in endpoint:
+                        response = self.client.get(endpoint)
+                        response.raise_for_status()
+                        library_data = response.json()
+                        return {"status": "success", "data": library_data, "endpoint": endpoint}
             
-            library_data = response.json()
-            return {"status": "success", "data": library_data}
+            # Fallback to common patterns if discovery fails
+            fallback_endpoints = ["/v1/library", "/library", "/user/library"]
+            for endpoint in fallback_endpoints:
+                try:
+                    response = self.client.get(endpoint)
+                    if response.status_code == 200:
+                        library_data = response.json()
+                        return {"status": "success", "data": library_data, "endpoint": endpoint}
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code != 404:
+                        continue  # Try next endpoint
+                except Exception:
+                    continue
             
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 401:
-                # Token might be expired, try to refresh
-                token_manager.delete_token()
-                auth_result = self.authenticate()
-                if auth_result["status"] == "success":
-                    return self.get_library()  # Retry with new token
+            return {"status": "error", "message": "No working library endpoint found", "discovered": discovery}
             
-            return {"status": "error", "message": f"Failed to fetch library: {e.response.status_code}"}
         except Exception as e:
             return {"status": "error", "message": f"Failed to fetch library: {e}"}
     
