@@ -3,6 +3,7 @@
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.widgets import Header, Footer, Static, Button, ListView, ListItem, Label
+from textual.reactive import reactive
 
 from ..api.client import iBroadcastClient
 from ..config.settings import settings
@@ -92,6 +93,7 @@ class iBroadcastTUI(App):
         self.api_client = iBroadcastClient()
         self.title = settings.app_name
         self.library_data = None
+        self.show_library = False
     
     def compose(self) -> ComposeResult:
         """Create the main layout."""
@@ -109,14 +111,14 @@ class iBroadcastTUI(App):
                         id="sidebar-nav"
                     )
                 
-                with Vertical(classes="content"):
+                with Vertical(classes="content", id="content-container"):
                     if self.library_data:
                         # Show music library stats
                         albums = len(self.library_data.get("albums", {}))
                         artists = len(self.library_data.get("artists", {}))
                         tracks = len(self.library_data.get("tracks", {}))
                         playlists = len(self.library_data.get("playlists", {}))
-                        
+
                         yield Static("🎵 iBroadcast Library Loaded!", classes="header")
                         yield Static(f"📀 {albums} albums", classes="stat")
                         yield Static(f"🎤 {artists} artists", classes="stat")
@@ -125,7 +127,7 @@ class iBroadcastTUI(App):
                         yield Static("", classes="spacer")
                         yield Static("🎨 Retro styling and detailed views coming soon!", classes="placeholder")
                     else:
-                        # Show welcome screen with connection buttons
+                        # Show welcome screen
                         yield Static("Welcome to iBroadcast TUI", id="welcome")
                         yield Button("Connect to iBroadcast", id="connect-btn")
                         yield Button("Discover API Endpoints", id="discover-btn")
@@ -183,9 +185,23 @@ class iBroadcastTUI(App):
     
     def _load_library(self) -> None:
         """Load and display library information."""
+        print("DEBUG: _load_library called")
         try:
             self.notify("Discovering iBroadcast API endpoints...", severity="information")
             result = self.api_client.get_library()
+            print(f"DEBUG: Library result: {result['status']}")
+
+            if result["status"] == "success":
+                data = result.get("data", {})
+                print(f"DEBUG: Data keys: {list(data.keys()) if data else 'No data'}")
+                self.library_data = data
+                print(f"DEBUG: Library data set: {bool(self.library_data)}")
+
+                # Try to refresh the screen to show new content
+                try:
+                    self.screen.refresh()
+                except Exception as e:
+                    print(f"Screen refresh failed: {e}")
             if result["status"] == "success":
                 endpoint = result.get("endpoint", "unknown")
                 data = result.get("data", {})
@@ -202,8 +218,9 @@ class iBroadcastTUI(App):
                     
                     self.notify(f"Library loaded! {albums_count} albums, {artists_count} artists, {tracks_count} tracks, {playlists_count} playlists", severity="information")
                     
-                    # Refresh the UI to show data tabs
-                    self.refresh()
+                    # Schedule UI update for after screen is ready
+                    from textual import events
+                    self.post_message(events.Compose())
                 else:
                     self.notify(f"Connected! Using endpoint: {endpoint}. No data structure available yet.", severity="information")
             else:
@@ -220,8 +237,19 @@ class iBroadcastTUI(App):
                         
         except Exception as e:
             self.notify(f"Library loading failed: {e}", severity="error")
-    
+
+
+
     def on_mount(self) -> None:
         """Called when the app starts."""
         if not settings.validate():
             self.notify("Username and password not configured. Check .env file.", severity="warning")
+            return
+
+        # Check if we have stored session data and try to load library
+        if self.api_client.user_id and self.api_client.token:
+            self.notify("Loading stored session...", severity="information")
+            self._load_library()
+        elif self.api_client.authenticate()["status"] == "success":
+            self.notify("Authenticated successfully!", severity="information")
+            self._load_library()
