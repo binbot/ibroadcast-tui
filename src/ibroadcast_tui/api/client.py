@@ -123,7 +123,7 @@ class iBroadcastClient:
                 "supported_types": False,
             }
 
-            response = httpx.post(f"{self.library_url}/s/JSON/library", json=library_data)
+            response = httpx.post(f"{self.library_url}/s/JSON/library", json=library_data, timeout=30.0)
             response.raise_for_status()
 
             library_response = response.json()
@@ -145,6 +145,43 @@ class iBroadcastClient:
         except Exception as e:
             return {"status": "error", "message": f"Failed to fetch library: {e}"}
     
+    def get_stream_url(self, track_id: str) -> Dict[str, Any]:
+        """Get streaming URL for a track."""
+        # Ensure we have a valid token
+        if not token_manager.is_token_valid():
+            auth_result = self.authenticate()
+            if auth_result["status"] != "success":
+                return {"status": "error", "message": "Authentication required"}
+
+        try:
+            # iBroadcast stream request
+            stream_data = {
+                "_token": self.token,
+                "_userid": self.user_id,
+                "client": settings.app_name.lower().replace(" ", "-"),
+                "version": settings.app_version,
+                "track_id": track_id,
+            }
+
+            response = httpx.post(f"{self.library_url}/s/JSON/stream", json=stream_data, timeout=10.0)
+            response.raise_for_status()
+
+            stream_response = response.json()
+
+            if "stream_url" in stream_response:
+                return {
+                    "status": "success",
+                    "stream_url": stream_response["stream_url"],
+                    "track_info": stream_response.get("track", {})
+                }
+            else:
+                return {"status": "error", "message": "Invalid stream response format"}
+
+        except httpx.HTTPStatusError as e:
+            return {"status": "error", "message": f"Failed to get stream URL: {e.response.status_code}"}
+        except Exception as e:
+            return {"status": "error", "message": f"Failed to get stream URL: {e}"}
+
     def close(self) -> None:
         """Close the HTTP client."""
         self.client.close()
