@@ -1,19 +1,22 @@
-"""Data manager for efficient library loading and caching."""
+"""Simple JSON-based data manager for library caching."""
 
 import asyncio
+import json
+import os
 from typing import Dict, List, Any
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
-from .database import SessionLocal, Artist, Album, Track, Playlist, PlaylistTrack
-from sqlalchemy import func
 from .api.client import iBroadcastClient
 
 class DataManager:
-    """Manages library data with caching and efficient loading."""
+    """Manages library data with simple JSON caching."""
 
     def __init__(self):
         self.api_client = iBroadcastClient()
         self.executor = ThreadPoolExecutor(max_workers=4)
+        self.cache_dir = Path.home() / ".ibroadcast_tui"
+        self.cache_file = self.cache_dir / "library_cache.json"
 
     async def load_library_async(self) -> Dict[str, Any]:
         """Load library data asynchronously with caching."""
@@ -48,157 +51,85 @@ class DataManager:
 
     def _has_cached_data(self) -> bool:
         """Check if we have cached data."""
-        with SessionLocal() as db:
-            return db.query(Artist).count() > 0
+        return self.cache_file.exists() and self.cache_file.stat().st_size > 0
 
     def _load_cached_library(self) -> Dict[str, Any]:
-        """Load library data from cache."""
-        with SessionLocal() as db:
-            # Create mappings from database IDs to iBroadcast IDs
-            artist_ib_map = {artist.id: artist.ibroadcast_id for artist in db.query(Artist).all()}
-            album_ib_map = {album.id: album.ibroadcast_id for album in db.query(Album).all()}
-
-            # Load artists with track counts
-            artists = {}
-            # Pre-compute track counts for all artists
-            from sqlalchemy import func
-            track_counts = db.query(Track.artist_id, func.count(Track.id)).group_by(Track.artist_id).all()
-            track_count_map = {artist_id: count for artist_id, count in track_counts}
-
-            for artist in db.query(Artist).all():
-                artists[artist.ibroadcast_id] = {
-                    "id": artist.ibroadcast_id,
-                    "name": artist.name,
-                    "track_count": track_count_map.get(artist.id, 0)
-                }
-
-            # Load albums
-            albums = {}
-            for album in db.query(Album).all():
-                albums[album.ibroadcast_id] = {
-                    "id": album.ibroadcast_id,
-                    "title": album.title,
-                    "artist_id": artist_ib_map.get(album.artist_id),  # Convert to iBroadcast ID
-                    "year": album.year,
-                    "track_count": album.track_count
-                }
-
-            # Load tracks
-            tracks = {}
-            for track in db.query(Track).all():
-                tracks[track.ibroadcast_id] = {
-                    "id": track.ibroadcast_id,
-                    "title": track.title,
-                    "artist_id": artist_ib_map.get(track.artist_id),  # Convert to iBroadcast ID
-                    "album_id": album_ib_map.get(track.album_id),    # Convert to iBroadcast ID
-                    "duration": track.duration,
-                    "track_number": track.track_number,
-                    "year": track.year
-                }
-
-            # Load playlists
-            playlists = {}
-            for playlist in db.query(Playlist).all():
-                playlists[playlist.ibroadcast_id] = {
-                    "id": playlist.ibroadcast_id,
-                    "name": playlist.name,
-                    "description": playlist.description,
-                    "track_count": playlist.track_count
-                }
-
-            return {
-                "artists": artists,
-                "albums": albums,
-                "tracks": tracks,
-                "playlists": playlists
-            }
+        """Load library data from JSON cache."""
+        try:
+            with open(self.cache_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
 
     def _cache_library_data(self, data: Dict[str, Any]) -> None:
-        """Cache library data to database."""
-        with SessionLocal() as db:
-            try:
-                # Clear existing data
-                db.query(PlaylistTrack).delete()
-                db.query(Playlist).delete()
-                db.query(Track).delete()
-                db.query(Album).delete()
-                db.query(Artist).delete()
+        """Cache library data to JSON file with pre-computed track counts."""
+        try:
+            # Ensure cache directory exists
+            self.cache_dir.mkdir(exist_ok=True)
 
-                # Cache artists
-                artists_map = {}
-                for artist_id, artist_data in data.get("artists", {}).items():
-                    if isinstance(artist_data, list) and len(artist_data) >= 1:
-                        artist = Artist(
-                            ibroadcast_id=artist_id,
-                            name=artist_data[0]  # Artist name is at index 0
-                        )
-                        db.add(artist)
-                        artists_map[artist_id] = artist
+            # Pre-compute track counts for artists
+            processed_data = self._preprocess_data(data)
 
-                db.flush()  # Get IDs
+            # Write to cache file
+            with open(self.cache_file, 'w', encoding='utf-8') as f:
+                json.dump(processed_data, f, ensure_ascii=False, indent=2)
 
-                # Cache albums
-                albums_map = {}
-                for album_id, album_data in data.get("albums", {}).items():
-                    if isinstance(album_data, list) and len(album_data) >= 4:
-                        artist_id = str(album_data[2])  # Artist ID at index 2
-                        if artist_id in artists_map:
-                            album = Album(
-                                ibroadcast_id=album_id,
-                                title=album_data[0],  # Title at index 0
-                                artist_id=artists_map[artist_id].id,
-                                year=album_data[6] if len(album_data) > 6 else None,  # Year at index 6
-                                track_count=len(album_data[1]) if len(album_data) > 1 else 0  # Track count from track_ids array
-                            )
-                            db.add(album)
-                            albums_map[album_id] = album
+        except Exception as e:
+            # Don't fail if caching fails, just log
+            print(f"Warning: Failed to cache data: {e}")
 
-                db.flush()
+    def _preprocess_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Preprocess data to add track counts and normalize formats."""
+        processed = dict(data)  # Copy the data
 
+        # Pre-compute track counts for artists
+        if "tracks" in data and "artists" in data:
+            track_counts = self._compute_track_counts(data["tracks"])
+            processed["artists"] = self._add_track_counts_to_artists(data["artists"], track_counts)
 
+        return processed
 
-                # Cache tracks
-                for track_id, track_data in data.get("tracks", {}).items():
-                    if isinstance(track_data, list) and len(track_data) >= 7:
-                        artist_id = str(track_data[6])  # Artist ID at index 6
-                        album_id = str(track_data[5])   # Album ID at index 5
+    def _compute_track_counts(self, tracks: Dict[str, Any]) -> Dict[str, int]:
+        """Compute track counts for each artist."""
+        track_counts = {}
 
-                        # Use track's artist if it exists, otherwise use album's artist
-                        if artist_id in artists_map:
-                            final_artist_db_id = artists_map[artist_id].id
-                        elif album_id in albums_map:
-                            # Use the album's artist as fallback
-                            final_artist_db_id = albums_map[album_id].artist_id
-                        else:
-                            continue  # Skip tracks with no valid artist
+        for track_data in tracks.values():
+            artist_id = None
+            if isinstance(track_data, list) and len(track_data) >= 7:
+                artist_id = str(track_data[6])  # Artist ID at index 6
+            elif isinstance(track_data, dict):
+                artist_id = track_data.get("artist_id")
 
-                        if album_id in albums_map:
-                            track = Track(
-                                ibroadcast_id=track_id,
-                                title=track_data[2],  # Title at index 2
-                                artist_id=final_artist_db_id,
-                                album_id=albums_map[album_id].id,
-                                duration=None,  # Not available in current API
-                                track_number=track_data[0] if len(track_data) > 0 else None,  # Track number at index 0
-                                year=track_data[1] if len(track_data) > 1 else None  # Year at index 1
-                            )
-                            db.add(track)
+            if artist_id:
+                track_counts[artist_id] = track_counts.get(artist_id, 0) + 1
 
-                # Cache playlists
-                for playlist_id, playlist_data in data.get("playlists", {}).items():
-                    if isinstance(playlist_data, list) and len(playlist_data) >= 2:
-                        playlist = Playlist(
-                            ibroadcast_id=playlist_id,
-                            name=playlist_data[0],  # Name at index 0
-                            track_count=len(playlist_data[1]) if len(playlist_data) > 1 else 0  # Track count from track_ids array
-                        )
-                        db.add(playlist)
+        return track_counts
 
-                db.commit()
+    def _add_track_counts_to_artists(self, artists: Dict[str, Any], track_counts: Dict[str, int]) -> Dict[str, Any]:
+        """Add track counts to artist data."""
+        processed_artists = {}
 
-            except Exception as e:
-                db.rollback()
-                raise e
+        for artist_id, artist_data in artists.items():
+            if isinstance(artist_data, list):
+                # List format: [name, ...]
+                processed_artists[artist_id] = {
+                    "id": artist_id,
+                    "name": artist_data[0] if artist_data else "Unknown Artist",
+                    "track_count": track_counts.get(artist_id, 0)
+                }
+            elif isinstance(artist_data, dict):
+                # Dict format: already has structure
+                processed_artists[artist_id] = dict(artist_data)
+                processed_artists[artist_id]["track_count"] = track_counts.get(artist_id, 0)
+            else:
+                # Fallback
+                processed_artists[artist_id] = {
+                    "id": artist_id,
+                    "name": "Unknown Artist",
+                    "track_count": track_counts.get(artist_id, 0)
+                }
+
+        return processed_artists
 
     async def search_tracks(self, query: str, limit: int = 50) -> List[Dict[str, Any]]:
         """Search tracks by title, artist, or album."""
@@ -212,23 +143,71 @@ class DataManager:
 
     def _search_tracks_sync(self, query: str, limit: int) -> List[Dict[str, Any]]:
         """Search tracks synchronously."""
-        with SessionLocal() as db:
-            # Search tracks by title
-            tracks = db.query(Track).join(Artist).join(Album).filter(
-                Track.title.ilike(f"%{query}%")
-            ).limit(limit).all()
+        if not self._has_cached_data():
+            return []
+
+        try:
+            data = self._load_cached_library()
+            tracks = data.get("tracks", {})
+            artists = data.get("artists", {})
+            albums = data.get("albums", {})
 
             results = []
-            for track in tracks:
-                results.append({
-                    "id": track.ibroadcast_id,
-                    "title": track.title,
-                    "artist": track.artist.name,
-                    "album": track.album.title,
-                    "year": track.year
-                })
+            query_lower = query.lower()
+
+            for track_id, track_data in tracks.items():
+                if len(results) >= limit:
+                    break
+
+                # Extract track info
+                if isinstance(track_data, list) and len(track_data) >= 3:
+                    title = str(track_data[2])  # Title at index 2
+                    artist_id = str(track_data[6]) if len(track_data) > 6 else None
+                    album_id = str(track_data[5]) if len(track_data) > 5 else None
+                elif isinstance(track_data, dict):
+                    title = track_data.get("title", "")
+                    artist_id = track_data.get("artist_id")
+                    album_id = track_data.get("album_id")
+                else:
+                    continue
+
+                # Check if query matches
+                if query_lower in title.lower():
+                    # Get artist and album names
+                    artist_name = "Unknown Artist"
+                    if artist_id and artist_id in artists:
+                        artist_data = artists[artist_id]
+                        if isinstance(artist_data, dict):
+                            artist_name = artist_data.get("name", "Unknown Artist")
+                        elif isinstance(artist_data, list) and artist_data:
+                            artist_name = artist_data[0]
+
+                    album_name = "Unknown Album"
+                    if album_id and album_id in albums:
+                        album_data = albums[album_id]
+                        if isinstance(album_data, dict):
+                            album_name = album_data.get("title", "Unknown Album")
+                        elif isinstance(album_data, list) and album_data:
+                            album_name = album_data[0]
+
+                    results.append({
+                        "id": track_id,
+                        "title": title,
+                        "artist": artist_name,
+                        "album": album_name,
+                        "year": None  # Not easily available in current format
+                    })
 
             return results
+
+        except Exception as e:
+            print(f"Search error: {e}")
+            return []
+
+    def clear_cache(self) -> None:
+        """Clear the cache file."""
+        if self.cache_file.exists():
+            self.cache_file.unlink()
 
     def close(self):
         """Close the data manager."""
