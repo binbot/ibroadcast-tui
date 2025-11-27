@@ -212,3 +212,235 @@ class DataManager:
     def close(self):
         """Close the data manager."""
         self.executor.shutdown(wait=True)
+
+    async def get_albums_rows_async(self, library_data: Dict[str, Any]) -> List[List[str]]:
+        """Get album rows for DataTable asynchronously."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            self.executor,
+            self._prepare_albums_data_sync,
+            library_data
+        )
+
+    async def get_artists_rows_async(self, library_data: Dict[str, Any]) -> List[List[str]]:
+        """Get artist rows for DataTable asynchronously."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            self.executor,
+            self._prepare_artists_data_sync,
+            library_data
+        )
+
+    async def get_playlists_rows_async(self, library_data: Dict[str, Any]) -> List[List[str]]:
+        """Get playlist rows for DataTable asynchronously."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            self.executor,
+            self._prepare_playlists_data_sync,
+            library_data
+        )
+
+    async def get_tracks_rows_async(self, library_data: Dict[str, Any]) -> List[List[str]]:
+        """Get track rows for DataTable asynchronously."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            self.executor,
+            self._prepare_tracks_data_sync,
+            library_data
+        )
+
+    def _prepare_albums_data_sync(self, library_data: Dict[str, Any]) -> List[List[str]]:
+        """Prepare album data for DataTable."""
+        if "albums" not in library_data:
+            return []
+
+        rows = []
+        albums = library_data["albums"]
+
+        # Sort by title
+        def get_album_title(item):
+            album_id, album_data = item
+            if isinstance(album_data, dict):
+                return str(album_data.get("title", "")).lower()
+            elif isinstance(album_data, list) and len(album_data) > 0:
+                return str(album_data[0]).lower()
+            return ""
+
+        sorted_albums = sorted(albums.items(), key=get_album_title)
+
+        for album_id, album in sorted_albums:
+            if isinstance(album, dict):
+                title = album.get("title", "Unknown Album")
+                artist_name = self._get_artist_name(library_data, album.get("artist_id"))
+                year = str(album.get("year", "Unknown"))
+                tracks = str(album.get("track_count", 0))
+            elif isinstance(album, list) and len(album) >= 7:
+                title = album[0] if album[0] else "Unknown Album"
+                artist_id = album[2] if len(album) > 2 else None
+                artist_name = self._get_artist_name(library_data, artist_id)
+                year = str(album[6]) if len(album) > 6 and album[6] else "Unknown"
+                track_ids = album[1] if len(album) > 1 and isinstance(album[1], list) else []
+                tracks = str(len(track_ids))
+            else:
+                continue
+
+            rows.append([title, artist_name, year, tracks])
+
+        return rows
+
+    def _prepare_artists_data_sync(self, library_data: Dict[str, Any]) -> List[List[str]]:
+        """Prepare artist data for DataTable."""
+        if "artists" not in library_data:
+            return []
+
+        rows = []
+        artists = library_data["artists"]
+
+        def get_artist_name(item):
+            artist_id, artist_data = item
+            if isinstance(artist_data, dict):
+                return str(artist_data.get("name", "")).lower()
+            elif isinstance(artist_data, list) and len(artist_data) > 0:
+                return str(artist_data[0]).lower()
+            return ""
+
+        sorted_artists = sorted(artists.items(), key=get_artist_name)
+
+        for artist_id, artist in sorted_artists:
+            if isinstance(artist, dict):
+                name = artist.get("name", "Unknown Artist")
+                tracks_count = artist.get("track_count", 0)
+            elif isinstance(artist, list) and len(artist) >= 2:
+                name = artist[0] if artist[0] else "Unknown Artist"
+                tracks_count = self._count_artist_tracks(library_data, artist_id)
+            else:
+                continue
+
+            rows.append([name, str(tracks_count)])
+
+        return rows
+
+    def _prepare_playlists_data_sync(self, library_data: Dict[str, Any]) -> List[List[str]]:
+        """Prepare playlist data for DataTable."""
+        if "playlists" not in library_data:
+            return []
+
+        rows = []
+        playlists = library_data["playlists"]
+
+        def get_playlist_name(item):
+            playlist_id, playlist_data = item
+            if isinstance(playlist_data, dict):
+                return str(playlist_data.get("name", "")).lower()
+            elif isinstance(playlist_data, list) and len(playlist_data) > 0:
+                return str(playlist_data[0]).lower()
+            return ""
+
+        sorted_playlists = sorted(playlists.items(), key=get_playlist_name)
+
+        for playlist_id, playlist in sorted_playlists:
+            if isinstance(playlist, dict):
+                name = playlist.get("name", "Unknown Playlist")
+                tracks = str(playlist.get("track_count", 0))
+                description = playlist.get("description", "")
+            elif isinstance(playlist, list) and len(playlist) >= 2:
+                name = playlist[0] if playlist[0] else "Unknown Playlist"
+                track_ids = playlist[1] if len(playlist) > 1 and isinstance(playlist[1], list) else []
+                tracks = str(len(track_ids))
+                description = ""
+            else:
+                continue
+
+            rows.append([name, tracks, description])
+
+        return rows
+
+    def _prepare_tracks_data_sync(self, library_data: Dict[str, Any]) -> List[List[str]]:
+        """Prepare track data for DataTable."""
+        if "tracks" not in library_data:
+            return []
+
+        rows = []
+        tracks = library_data["tracks"]
+
+        def get_track_title(item):
+            track_id, track_data = item
+            if isinstance(track_data, dict):
+                return str(track_data.get("title", "")).lower()
+            elif isinstance(track_data, list) and len(track_data) > 2:
+                return str(track_data[2]).lower()
+            return ""
+
+        sorted_tracks = sorted(tracks.items(), key=get_track_title)
+
+        for track_id, track in sorted_tracks:
+            if isinstance(track, dict):
+                title = track.get("title", "Unknown Track")
+                artist_name = self._get_artist_name(library_data, track.get("artist_id"))
+                album_name = self._get_album_name(library_data, track.get("album_id"))
+                duration = self._format_duration(track.get("duration", 0))
+            elif isinstance(track, list) and len(track) >= 7:
+                title = track[2] if len(track) > 2 and track[2] else "Unknown Track"
+                artist_id = track[6] if len(track) > 6 else None
+                album_id = track[5] if len(track) > 5 else None
+                artist_name = self._get_artist_name(library_data, artist_id)
+                album_name = self._get_album_name(library_data, album_id)
+                duration = self._format_duration(track[4] if len(track) > 4 else 0)
+            else:
+                continue
+
+            rows.append([title, artist_name, album_name, duration])
+
+        return rows
+
+    def _get_artist_name(self, library_data: Dict[str, Any], artist_id) -> str:
+        """Get artist name from ID."""
+        if not artist_id or "artists" not in library_data:
+            return "Unknown Artist"
+
+        artist = library_data["artists"].get(str(artist_id))
+        if artist and isinstance(artist, dict):
+            return artist.get("name", "Unknown Artist")
+        elif artist and isinstance(artist, list) and len(artist) > 0:
+            return artist[0] if artist[0] else "Unknown Artist"
+        return "Unknown Artist"
+
+    def _get_album_name(self, library_data: Dict[str, Any], album_id) -> str:
+        """Get album name from ID."""
+        if not album_id or "albums" not in library_data:
+            return "Unknown Album"
+
+        album = library_data["albums"].get(str(album_id))
+        if album and isinstance(album, dict):
+            return album.get("title", "Unknown Album")
+        elif album and isinstance(album, list) and len(album) > 0:
+            return album[0] if album[0] else "Unknown Album"
+        return "Unknown Album"
+
+    def _count_artist_tracks(self, library_data: Dict[str, Any], artist_id) -> int:
+        """Count tracks by artist."""
+        if "tracks" not in library_data:
+            return 0
+
+        return sum(1 for track in library_data["tracks"].values()
+                  if isinstance(track, (dict, list)) and
+                  str(self._get_track_artist_id(track)) == str(artist_id))
+
+    def _get_track_artist_id(self, track) -> str:
+        """Get artist ID from track data."""
+        if isinstance(track, dict):
+            return track.get("artist_id", "")
+        elif isinstance(track, list) and len(track) > 5:
+            return str(track[6])
+        return ""
+
+    def _format_duration(self, duration_seconds) -> str:
+        """Format duration in seconds to MM:SS."""
+        if not duration_seconds:
+            return "0:00"
+        try:
+            minutes = int(duration_seconds) // 60
+            seconds = int(duration_seconds) % 60
+            return f"{minutes}:{seconds:02d}"
+        except (ValueError, TypeError):
+            return "0:00"
