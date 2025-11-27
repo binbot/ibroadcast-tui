@@ -246,6 +246,9 @@ class iBroadcastTUI(App):
         # Audio playback state
         self.player = AudioPlayer(on_track_end=self.on_track_end)
         self.playback_timer = None
+        
+        # Data loading task management
+        self._load_task = None
 
 
 
@@ -659,10 +662,22 @@ class iBroadcastTUI(App):
 
     async def _populate_datatable(self) -> None:
         """Populate DataTable asynchronously with chunked loading."""
+        # Cancel any existing load task
+        if self._load_task and not self._load_task.done():
+            self._load_task.cancel()
+            try:
+                await self._load_task
+            except asyncio.CancelledError:
+                pass
+        
+        # Start new load task
+        self._load_task = asyncio.create_task(self._populate_datatable_task())
+
+    async def _populate_datatable_task(self) -> None:
+        """Internal task to populate DataTable."""
         try:
             table = self.query_one("#library-table", DataTable)
         except Exception:
-            # Table might not exist yet or anymore
             return
 
         if not self.library_data:
@@ -691,12 +706,19 @@ class iBroadcastTUI(App):
         table.loading = False
 
         # Add rows in chunks to prevent UI freezing
-        chunk_size = 50
+        # Increased chunk size and sleep time for better responsiveness
+        chunk_size = 100
         for i in range(0, len(rows), chunk_size):
+            # Check for cancellation
+            if asyncio.current_task().cancelled():
+                return
+
             chunk = rows[i:i+chunk_size]
             table.add_rows(chunk)
+            
             # Yield to event loop to keep UI responsive
-            await asyncio.sleep(0.001)
+            # Increased sleep to ensure input events are processed
+            await asyncio.sleep(0.02)
 
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
