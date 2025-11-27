@@ -10,7 +10,26 @@ A terminal user interface (TUI) for the iBroadcast music service.
    cd ibroadcast-tui
    ```
 
-2. Install dependencies:
+2. Install system dependencies (Required for audio playback):
+
+   - **macOS**:
+     ```bash
+     brew install mpv
+     ```
+   - **Fedora**:
+     ```bash
+     sudo dnf install mpv
+     ```
+   - **Arch Linux**:
+     ```bash
+     sudo pacman -S mpv
+     ```
+   - **Ubuntu/Debian**:
+     ```bash
+     sudo apt install mpv libmpv-dev
+     ```
+
+3. Install Python dependencies:
    
    **Option 1: pip (Recommended for most users)**
    ```bash
