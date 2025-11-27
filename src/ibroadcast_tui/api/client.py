@@ -132,6 +132,9 @@ class iBroadcastClient:
             if "library" in library_response:
                 return {"status": "success", "data": library_response["library"]}
             else:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Invalid library response: {library_response}")
                 return {"status": "error", "message": "Invalid library response format"}
             
         except httpx.HTTPStatusError as e:
