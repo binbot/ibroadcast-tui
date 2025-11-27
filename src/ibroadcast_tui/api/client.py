@@ -113,6 +113,10 @@ class iBroadcastClient:
             if auth_result["status"] != "success":
                 return {"status": "error", "message": "Authentication required"}
         
+        # Reload session from token manager if we don't have it in memory
+        if not self.token or not self.user_id:
+             self._load_stored_session()
+        
         try:
             # iBroadcast library request (based on existing client)
             library_data = {
@@ -156,6 +160,10 @@ class iBroadcastClient:
             auth_result = self.authenticate()
             if auth_result["status"] != "success":
                 return {"status": "error", "message": "Authentication required"}
+
+        # Reload session from token manager if we don't have it in memory
+        if not self.token or not self.user_id:
+             self._load_stored_session()
 
         try:
             # If we have the track path, construct the URL manually
