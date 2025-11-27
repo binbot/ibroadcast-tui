@@ -1,4 +1,4 @@
 textual>=6.6.0,<7.0.0
 httpx>=0.28.1,<0.29.0
 python-dotenv>=1.2.1,<2.0.0
-# pygame>=2.0.0,<3.0.0  # Optional: install manually if audio playback is needed
+miniaudio>=1.61,<2.0
