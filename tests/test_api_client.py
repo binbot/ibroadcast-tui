@@ -1,7 +1,7 @@
 """Tests for API client."""
 
 from unittest.mock import Mock, patch
-
+import pytest
 from ibroadcast_tui.api.client import iBroadcastClient
 
 class TestiBroadcastClient:
@@ -14,59 +14,88 @@ class TestiBroadcastClient:
         assert client.base_url == "https://api.ibroadcast.com"
         mock_client.assert_called_once()
     
-    @patch('ibroadcast_tui.api.client.token_manager')
-    def test_authenticate_missing_credentials(self, mock_token_manager: Mock) -> None:
-        """Test authentication with missing credentials."""
-        # Mock token manager to avoid file operations
-        mock_token_manager.is_token_valid.return_value = False
-        
-        # Create client with missing credentials
-        client = iBroadcastClient()
-        client.client_id = None
-        client.client_secret = None
-        result = client._request_access_token()
-        assert result["status"] == "error"
-        assert "Missing client credentials" in result["message"]
-    
     @patch('ibroadcast_tui.api.client.httpx.Client')
     @patch('ibroadcast_tui.api.client.token_manager')
-    def test_token_request_success(self, mock_token_manager: Mock, mock_client: Mock) -> None:
-        """Test successful token request."""
-        # Mock successful token response
-        mock_response = Mock()
-        mock_response.json.return_value = {
-            "access_token": "test_access_token",
-            "expires_in": 3600
-        }
-        mock_response.raise_for_status.return_value = None
-        
-        mock_client_instance = Mock()
-        mock_client_instance.post.return_value = mock_response
-        mock_client.return_value = mock_client_instance
-        
-        # Mock token manager to avoid file operations
-        mock_token_manager.save_token.return_value = None
+    def test_authenticate_success(self, mock_token_manager: Mock, mock_client_cls: Mock) -> None:
+        """Test successful authentication."""
+        # Mock token manager
+        mock_token_manager.load_token.return_value = None
         mock_token_manager.is_token_valid.return_value = False
         
-        # Mock headers to avoid assignment issues
-        mock_client_instance.headers = {}
+        # Mock client instance
+        mock_client = Mock()
+        mock_client_cls.return_value = mock_client
+        
+        # Mock login response
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "user": {
+                "id": "12345",
+                "token": "test_token"
+            },
+            "settings": {
+                "streaming_server": "https://streaming.test.com"
+            }
+        }
+        mock_response.raise_for_status.return_value = None
+        mock_client.post.return_value = mock_response
         
         client = iBroadcastClient()
-        client.client_id = "test_client"
-        client.client_secret = "test_secret"
+        client.username = "testuser"
+        client.password = "testpass"
         
-        result = client._request_access_token()
+        result = client.authenticate()
         
         assert result["status"] == "success"
-        assert client.access_token == "test_access_token"
-    
-    def test_token_request_missing_credentials(self) -> None:
-        """Test token request with missing credentials."""
-        client = iBroadcastClient()
-        client.client_id = None
-        client.client_secret = None
+        assert client.user_id == "12345"
+        assert client.token == "test_token"
+        assert client.streaming_server == "https://streaming.test.com"
         
-        result = client._request_access_token()
+    @patch('ibroadcast_tui.api.client.httpx.Client')
+    @patch('ibroadcast_tui.api.client.token_manager')
+    def test_authenticate_failure(self, mock_token_manager: Mock, mock_client_cls: Mock) -> None:
+        """Test authentication failure."""
+        # Mock token manager
+        mock_token_manager.load_token.return_value = None
+        mock_token_manager.is_token_valid.return_value = False
+        
+        # Mock client instance
+        mock_client = Mock()
+        mock_client_cls.return_value = mock_client
+        
+        # Mock login response
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "result": False,
+            "message": "Invalid login"
+        }
+        mock_response.raise_for_status.return_value = None
+        mock_client.post.return_value = mock_response
+        
+        client = iBroadcastClient()
+        client.username = "testuser"
+        client.password = "wrongpass"
+        
+        result = client.authenticate()
         
         assert result["status"] == "error"
-        assert "Missing client credentials" in result["message"]
+        
+    @patch('ibroadcast_tui.api.client.httpx.Client')
+    def test_get_stream_url_manual(self, mock_client_cls: Mock) -> None:
+        """Test manual stream URL construction."""
+        client = iBroadcastClient()
+        client.user_id = "12345"
+        client.token = "test_token"
+        client.streaming_server = "https://streaming.test.com"
+        
+        track_id = "999"
+        track_path = "/path/to/track.mp3"
+        
+        result = client.get_stream_url(track_id, track_path)
+        
+        assert result["status"] == "success"
+        assert "stream_url" in result
+        assert "https://streaming.test.com/path/to/track.mp3" in result["stream_url"]
+        assert "Signature=test_token" in result["stream_url"]
+        assert "Expires=" in result["stream_url"]
+

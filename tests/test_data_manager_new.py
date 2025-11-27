@@ -60,8 +60,8 @@ async def test_get_tracks_rows_async(sample_library_data):
     assert rows[0][0] == "Track 1"
     assert rows[1][0] == "Track 2"
     
-    # Check duration formatting
-    assert rows[0][3] == "3:00"
-    assert rows[1][3] == "3:20"
+    # Check duration formatting (index 4)
+    assert rows[0][4] == "3:00"
+    assert rows[1][4] == "3:20"
     
     dm.close()

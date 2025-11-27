@@ -10,15 +10,24 @@ from ..config.settings import settings
 from ..data_manager import DataManager
 
 from ..player.audio_player import AudioPlayer
+import logging
+
+# Configure logging
+logging.basicConfig(
+    filename='debug.log',
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 class iBroadcastTUI(App):
     """Main TUI application for iBroadcast."""
     
     CSS = """
-    /* iBroadcast TUI - Clean Terminal Interface */
+    /* iBroadcast TUI - Premium Terminal Interface */
 
     Screen {
-        background: transparent;
+        background: $surface;
         color: $text;
     }
 
@@ -29,38 +38,40 @@ class iBroadcastTUI(App):
 
     .sidebar {
         width: 25;
-        background: transparent;
+        background: $surface-darken-1;
         padding: 1;
-        border-right: vkey $accent;
+        border-right: vkey $primary;
     }
 
     .main-content {
         width: 1fr;
-        background: transparent;
+        background: $surface;
         padding: 0 1;
-        border: round $accent;
+        border: round $primary;
         margin: 0 1;
     }
 
     .player-section {
         width: 30;
-        background: transparent;
+        background: $surface-darken-1;
         padding: 1;
-        border: round $accent;
+        border: round $secondary;
     }
 
     /* Sidebar */
     .sidebar-title {
-        color: $accent;
+        color: $primary;
         text-style: bold;
         text-align: center;
         margin-bottom: 1;
+        border-bottom: solid $primary;
     }
 
     .sidebar-separator {
-        color: $panel-lighten-2;
+        color: $surface-lighten-1;
         text-align: center;
         margin-bottom: 1;
+        display: none;
     }
 
     .nav-item {
@@ -70,21 +81,23 @@ class iBroadcastTUI(App):
         padding: 0 1;
         margin-bottom: 0;
         height: 1;
+        color: $text-muted;
     }
 
     .nav-item:hover {
-        background: transparent;
+        background: $surface-lighten-1;
         text-style: bold;
-        color: $accent;
+        color: $primary-lighten-1;
     }
 
     .nav-item:focus {
-        background: transparent;
-        text-style: bold underline;
-        color: $accent;
+        background: $surface-lighten-1;
+        text-style: bold;
+        color: $secondary;
+        border-left: wide $secondary;
     }
 
-    /* Content Area - Make it scrollable */
+    /* Content Area */
     .content-area {
         height: 1fr;
         border: none;
@@ -95,7 +108,7 @@ class iBroadcastTUI(App):
 
     /* Welcome screen */
     .welcome {
-        color: $accent;
+        color: $secondary;
         text-style: bold;
         text-align: center;
         margin: 2 0;
@@ -104,25 +117,26 @@ class iBroadcastTUI(App):
     .welcome-text {
         text-align: center;
         margin: 1 0;
+        color: $text-muted;
     }
 
     .connect-btn {
-        background: transparent;
-        color: $accent;
+        background: $primary;
+        color: $text;
         text-align: center;
         text-style: bold;
-        border: wide $accent;
+        border: none;
+        margin-top: 2;
     }
 
     .connect-btn:hover {
-        background: $accent 20%;
+        background: $primary-lighten-1;
         color: $text;
-        text-style: bold;
     }
 
     /* Player section */
     .player-label {
-        color: $accent;
+        color: $secondary;
         text-style: bold;
         margin-bottom: 0;
     }
@@ -131,39 +145,45 @@ class iBroadcastTUI(App):
         color: $text;
         text-style: bold;
         margin-bottom: 1;
+        background: $surface-lighten-1;
+        padding: 1;
+        border: solid $secondary;
     }
 
     .progress-bar {
-        color: $text-muted;
+        color: $primary;
         text-align: center;
         margin-bottom: 0;
     }
 
     .time-display {
-        color: $text;
+        color: $text-muted;
         text-align: center;
         margin-bottom: 1;
     }
 
     .player-controls {
-        /* Controls container */
         align: center middle;
+        background: $surface-lighten-1;
+        padding: 1;
     }
 
     .player-btn {
         width: 3;
         text-align: center;
-        color: $accent;
+        color: $primary;
+        background: transparent;
+        border: none;
     }
     
     .player-btn:hover {
-        color: $text;
-        background: $accent;
+        color: $secondary-lighten-1;
+        background: $surface-lighten-2;
     }
 
     /* Footer */
     Footer {
-        background: transparent;
+        background: $surface-darken-2;
         color: $text-muted;
         height: 1;
         text-align: center;
@@ -171,9 +191,9 @@ class iBroadcastTUI(App):
 
     /* Scrollable content */
     ScrollableContainer {
-        scrollbar-background: transparent;
-        scrollbar-color: $accent;
-        scrollbar-color-active: $accent-lighten-1;
+        scrollbar-background: $surface;
+        scrollbar-color: $primary;
+        scrollbar-color-active: $secondary;
     }
 
     /* Buttons */
@@ -185,23 +205,24 @@ class iBroadcastTUI(App):
 
     Button:hover {
         background: transparent;
-        color: $accent;
+        color: $primary;
         text-style: bold;
     }
 
     Button:focus {
         background: transparent;
-        color: $accent;
+        color: $secondary;
         text-style: bold underline;
     }
 
     /* View headers */
     .view-header {
-        color: $text;
+        color: $secondary;
         text-style: bold;
         text-align: center;
         margin-bottom: 1;
-        border-bottom: solid $accent;
+        border-bottom: double $secondary;
+        padding-bottom: 1;
     }
 
     /* DataTable styling */
@@ -212,21 +233,21 @@ class iBroadcastTUI(App):
     }
 
     DataTable > .datatable--header {
-        background: transparent;
-        color: $accent;
+        background: $surface-darken-1;
+        color: $primary;
         text-style: bold;
-        border-bottom: solid $accent;
+        border-bottom: solid $primary;
     }
 
     DataTable > .datatable--cursor {
-        background: $accent;
+        background: $primary;
         color: $text;
+        text-style: bold;
     }
 
     DataTable > .datatable--hover {
-        background: $accent 20%;
-        color: $accent;
-        text-style: bold;
+        background: $surface-lighten-1;
+        color: $secondary;
     }
     """
     
@@ -246,6 +267,9 @@ class iBroadcastTUI(App):
         # Audio playback state
         self.player = AudioPlayer(on_track_end=self.on_track_end)
         self.playback_timer = None
+        
+        # Data loading task management
+        self._load_task = None
 
 
 
@@ -404,31 +428,45 @@ class iBroadcastTUI(App):
         """Play a track by ID."""
         if not self.player.is_available:
             self.notify("Audio playback not available (mpv not found)", severity="warning")
+            logger.warning("Audio playback not available")
             return
 
         try:
+            logger.info(f"Attempting to play track: {track_id}")
+            # Get track path from DataManager
+            track_path = self.data_manager.get_track_path(track_id)
+            logger.debug(f"Track path: {track_path}")
+            
             # Get stream URL
-            stream_result = self.api_client.get_stream_url(track_id)
+            stream_result = self.api_client.get_stream_url(track_id, track_path)
+            logger.debug(f"Stream result: {stream_result}")
+            
             if stream_result["status"] != "success":
                 self.notify(f"Failed to get stream: {stream_result['message']}", severity="error")
+                logger.error(f"Failed to get stream: {stream_result}")
                 return
 
             stream_url = stream_result["stream_url"]
+            logger.info(f"Got stream URL: {stream_url}")
             
             # Update track info if not provided
             if not track_info:
                 track_info = {"id": track_id, "title": f"Track {track_id}"}
 
             # Play
+            logger.info("Calling player.play")
             if self.player.play(stream_url, track_info):
                 track_name = track_info.get("title", "Unknown")
                 self.notify(f"Playing: {track_name}", severity="information")
                 self._update_player_status()
+                logger.info("Playback started successfully")
             else:
                 self.notify("Failed to start playback", severity="error")
+                logger.error("player.play returned False")
 
         except Exception as e:
             self.notify(f"Failed to play track: {e}", severity="error")
+            logger.error(f"Exception in play_track: {e}", exc_info=True)
 
     def pause_track(self) -> None:
         """Pause/Resume current track."""
@@ -510,17 +548,46 @@ class iBroadcastTUI(App):
 
         album_name = album_data.get("title", "Unknown Album")
 
-        # For now, we'll just show a message since we don't have track_ids in the dict format
-        # In a full implementation, we'd need to query tracks by album_id
-        self.notify(f"Album playback not fully implemented yet. Album: {album_name}", severity="warning")
+        # Find tracks for this album
+        if "tracks" not in self.library_data:
+            self.notify("No track data available", severity="error")
+            return
 
-        # TODO: Implement proper album track lookup and playback
-        # track_info = {
-        #     "title": f"{album_name} - Track 1",
-        #     "album": album_name,
-        #     "track_id": first_track_id
-        # }
-        # self.play_track(first_track_id, track_info)
+        # Filter tracks for this album
+        album_tracks = []
+        for track_id, track_data in self.library_data["tracks"].items():
+            track_album_id = None
+            if isinstance(track_data, dict):
+                track_album_id = track_data.get("album_id")
+            elif isinstance(track_data, list) and len(track_data) > 5:
+                track_album_id = str(track_data[5])
+            
+            if str(track_album_id) == str(album_id):
+                album_tracks.append((track_id, track_data))
+        
+        if not album_tracks:
+            self.notify("No tracks found for this album", severity="warning")
+            return
+
+        # Sort tracks by track number if possible, otherwise by title
+        # For now, just play the first one found
+        first_track_id, first_track_data = album_tracks[0]
+        
+        track_title = "Unknown Track"
+        if isinstance(first_track_data, dict):
+            track_title = first_track_data.get("title", "Unknown Track")
+        elif isinstance(first_track_data, list) and len(first_track_data) > 2:
+            track_title = first_track_data[2]
+
+        self.notify(f"Playing album: {album_name}", severity="information")
+        
+        track_info = {
+            "id": first_track_id,
+            "title": track_title,
+            "album": album_name,
+            "artist": "Unknown Artist" # Could fetch this
+        }
+        self.play_track(first_track_id, track_info)
 
     def _get_albums_text(self) -> str:
         """Get formatted albums text."""
@@ -637,7 +704,7 @@ class iBroadcastTUI(App):
             return
 
         # Create DataTable with appropriate columns
-        table = DataTable(id="library-table")
+        table = DataTable(id="library-table", cursor_type="row")
 
         # Add columns based on current view
         if self.current_view == "albums":
@@ -647,7 +714,7 @@ class iBroadcastTUI(App):
         elif self.current_view == "playlists":
             table.add_columns("Name", "Tracks", "Description")
         elif self.current_view == "tracks":
-            table.add_columns("Title", "Artist", "Album", "Duration")
+            table.add_columns("Title", "Artist", "Album", "Year", "Duration")
         else:
             yield Static("View not implemented", classes="message")
             return
@@ -659,10 +726,22 @@ class iBroadcastTUI(App):
 
     async def _populate_datatable(self) -> None:
         """Populate DataTable asynchronously with chunked loading."""
+        # Cancel any existing load task
+        if self._load_task and not self._load_task.done():
+            self._load_task.cancel()
+            try:
+                await self._load_task
+            except asyncio.CancelledError:
+                pass
+        
+        # Start new load task
+        self._load_task = asyncio.create_task(self._populate_datatable_task())
+
+    async def _populate_datatable_task(self) -> None:
+        """Internal task to populate DataTable."""
         try:
             table = self.query_one("#library-table", DataTable)
         except Exception:
-            # Table might not exist yet or anymore
             return
 
         if not self.library_data:
@@ -691,12 +770,19 @@ class iBroadcastTUI(App):
         table.loading = False
 
         # Add rows in chunks to prevent UI freezing
-        chunk_size = 50
+        # Increased chunk size and sleep time for better responsiveness
+        chunk_size = 100
         for i in range(0, len(rows), chunk_size):
+            # Check for cancellation
+            if asyncio.current_task().cancelled():
+                return
+
             chunk = rows[i:i+chunk_size]
             table.add_rows(chunk)
+            
             # Yield to event loop to keep UI responsive
-            await asyncio.sleep(0.001)
+            # Increased sleep to ensure input events are processed
+            await asyncio.sleep(0.02)
 
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -736,6 +822,7 @@ class iBroadcastTUI(App):
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """Handle DataTable row selection for playback."""
         row_index = event.cursor_row
+        logger.info(f"Row selected: {row_index}, View: {self.current_view}")
 
         # Get the data for this row
         if self.current_view == "albums":
@@ -754,7 +841,7 @@ class iBroadcastTUI(App):
 
         albums = self.library_data["albums"]
         sorted_albums = sorted(albums.items(),
-                              key=lambda x: str(x[1].get("title", "")).lower())
+                              key=lambda x: str(x[1].get("title", "")).lower() if isinstance(x[1], dict) else (str(x[1][0]).lower() if isinstance(x[1], list) and len(x[1]) > 0 else ""))
 
         if row_index < len(sorted_albums):
             album_id, album_data = sorted_albums[row_index]
@@ -767,11 +854,43 @@ class iBroadcastTUI(App):
 
         artists = self.library_data["artists"]
         sorted_artists = sorted(artists.items(),
-                               key=lambda x: str(x[1].get("name", "")).lower())
+                               key=lambda x: str(x[1].get("name", "")).lower() if isinstance(x[1], dict) else (str(x[1][0]).lower() if isinstance(x[1], list) and len(x[1]) > 0 else ""))
 
         if row_index < len(sorted_artists):
             artist_id, artist_data = sorted_artists[row_index]
-            self.notify(f"Artist playback not implemented yet (ID: {artist_id})", severity="warning")
+            
+            # Find a track for this artist
+            if "tracks" not in self.library_data:
+                return
+
+            artist_name = artist_data.get("name", "Unknown Artist") if isinstance(artist_data, dict) else (artist_data[0] if artist_data else "Unknown")
+
+            for track_id, track_data in self.library_data["tracks"].items():
+                track_artist_id = None
+                if isinstance(track_data, dict):
+                    track_artist_id = track_data.get("artist_id")
+                elif isinstance(track_data, list) and len(track_data) > 6:
+                    track_artist_id = str(track_data[6])
+                
+                if str(track_artist_id) == str(artist_id):
+                    # Found a track
+                    self.notify(f"Playing artist: {artist_name}", severity="information")
+                    
+                    track_title = "Unknown Track"
+                    if isinstance(track_data, dict):
+                        track_title = track_data.get("title", "Unknown Track")
+                    elif isinstance(track_data, list) and len(track_data) > 2:
+                        track_title = track_data[2]
+
+                    track_info = {
+                        "id": track_id,
+                        "title": track_title,
+                        "artist": artist_name
+                    }
+                    self.play_track(track_id, track_info)
+                    return
+            
+            self.notify("No tracks found for this artist", severity="warning")
 
     def _handle_playlist_selection(self, row_index: int) -> None:
         """Handle playlist selection from DataTable."""
@@ -780,24 +899,63 @@ class iBroadcastTUI(App):
 
         playlists = self.library_data["playlists"]
         sorted_playlists = sorted(playlists.items(),
-                                 key=lambda x: str(x[1].get("name", "")).lower())
+                                 key=lambda x: str(x[1].get("name", "")).lower() if isinstance(x[1], dict) else (str(x[1][0]).lower() if isinstance(x[1], list) and len(x[1]) > 0 else ""))
 
         if row_index < len(sorted_playlists):
             playlist_id, playlist_data = sorted_playlists[row_index]
-            self.notify(f"Playlist playback not implemented yet (ID: {playlist_id})", severity="warning")
+            
+            playlist_name = "Unknown Playlist"
+            track_ids = []
+            
+            if isinstance(playlist_data, dict):
+                playlist_name = playlist_data.get("name", "Unknown Playlist")
+                # Dict format might not have track list directly available without another call
+                # But let's check if we have it
+                pass 
+            elif isinstance(playlist_data, list) and len(playlist_data) > 1:
+                playlist_name = playlist_data[0]
+                track_ids = playlist_data[1] if isinstance(playlist_data[1], list) else []
+
+            if track_ids:
+                first_track_id = track_ids[0]
+                self.notify(f"Playing playlist: {playlist_name}", severity="information")
+                
+                # We need to look up track info
+                track_title = "Playlist Track"
+                if "tracks" in self.library_data and first_track_id in self.library_data["tracks"]:
+                    t_data = self.library_data["tracks"][first_track_id]
+                    if isinstance(t_data, list) and len(t_data) > 2:
+                        track_title = t_data[2]
+                
+                track_info = {
+                    "id": first_track_id,
+                    "title": track_title,
+                    "playlist": playlist_name
+                }
+                self.play_track(first_track_id, track_info)
+            else:
+                self.notify(f"Playlist '{playlist_name}' is empty or tracks not loaded", severity="warning")
+            return
+
+
 
     def _handle_track_selection(self, row_index: int) -> None:
         """Handle track selection from DataTable."""
+        logger.info(f"Handling track selection for row {row_index}")
         if not self.library_data or "tracks" not in self.library_data:
+            logger.warning("No track data available")
             return
 
         tracks = self.library_data["tracks"]
         sorted_tracks = sorted(tracks.items(),
-                              key=lambda x: str(x[1].get("title", "")).lower())
+                              key=lambda x: str(x[1].get("title", "")).lower() if isinstance(x[1], dict) else (str(x[1][2]).lower() if isinstance(x[1], list) and len(x[1]) > 2 else ""))
 
         if row_index < len(sorted_tracks):
             track_id, track_data = sorted_tracks[row_index]
+            logger.info(f"Selected track ID: {track_id}")
             self.play_track(track_id)
+        else:
+            logger.warning(f"Row index {row_index} out of bounds (total tracks: {len(sorted_tracks)})")
 
     async def connect_to_service(self) -> None:
         """Connect to iBroadcast service."""

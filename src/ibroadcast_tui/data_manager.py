@@ -378,6 +378,7 @@ class DataManager:
                 title = track.get("title", "Unknown Track")
                 artist_name = self._get_artist_name(library_data, track.get("artist_id"))
                 album_name = self._get_album_name(library_data, track.get("album_id"))
+                year = str(track.get("year", ""))
                 duration = self._format_duration(track.get("duration", 0))
             elif isinstance(track, list) and len(track) >= 7:
                 title = track[2] if len(track) > 2 and track[2] else "Unknown Track"
@@ -385,11 +386,12 @@ class DataManager:
                 album_id = track[5] if len(track) > 5 else None
                 artist_name = self._get_artist_name(library_data, artist_id)
                 album_name = self._get_album_name(library_data, album_id)
+                year = str(track[7]) if len(track) > 7 else ""
                 duration = self._format_duration(track[4] if len(track) > 4 else 0)
             else:
                 continue
 
-            rows.append([title, artist_name, album_name, duration])
+            rows.append([title, artist_name, album_name, year, duration])
 
         return rows
 
@@ -444,3 +446,30 @@ class DataManager:
             return f"{minutes}:{seconds:02d}"
         except (ValueError, TypeError):
             return "0:00"
+
+    def get_track_path(self, track_id: str) -> str:
+        """Get the track path for a given track ID."""
+        if not self._has_cached_data():
+            return None
+            
+        try:
+            data = self._load_cached_library()
+            if "tracks" not in data:
+                return None
+                
+            track = data["tracks"].get(str(track_id))
+            if not track:
+                return None
+                
+            # Check if it's a list and has the path at index 16 (based on inspection)
+            if isinstance(track, list) and len(track) > 16:
+                return track[16]
+            
+            # If it's a dict (unlikely for main library, but possible)
+            if isinstance(track, dict):
+                return track.get("path")
+                
+            return None
+        except Exception as e:
+            print(f"Error getting track path: {e}")
+            return None

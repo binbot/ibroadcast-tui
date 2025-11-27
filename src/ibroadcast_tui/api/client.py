@@ -1,6 +1,7 @@
 """API client for iBroadcast service."""
 
 import httpx
+import time
 from typing import Optional, Dict, Any
 
 from ..config.settings import settings
@@ -17,6 +18,7 @@ class iBroadcastClient:
         self.password: Optional[str] = settings.password
         self.user_id: Optional[str] = None
         self.token: Optional[str] = None
+        self.streaming_server: str = "https://streaming.ibroadcast.com"
 
         # Build headers dynamically
         headers = {
@@ -28,25 +30,16 @@ class iBroadcastClient:
         # Try to load stored session
         self._load_stored_session()
     
-    def _load_stored_token(self) -> None:
-        """Load and validate stored token."""
-        token_data = token_manager.load_token()
-        if token_data and token_manager.is_token_valid(token_data):
-            self.access_token = token_data.get("access_token")
-            self._update_auth_headers()
-    
-    def _update_auth_headers(self) -> None:
-        """Update HTTP client headers with authorization."""
-        if self.access_token:
-            self.client.headers["Authorization"] = f"Bearer {self.access_token}"
-        else:
-            self.client.headers.pop("Authorization", None)
+
     
     def _load_stored_session(self) -> None:
         """Load and validate stored session."""
-        # For now, we'll implement session storage later
-        # This would load user_id and token from a session file
-        pass
+        token_data = token_manager.load_token()
+        if token_data and token_manager.is_token_valid(token_data):
+            self.token = token_data.get("token")
+            self.user_id = token_data.get("user_id")
+            if "streaming_server" in token_data:
+                self.streaming_server = token_data["streaming_server"]
 
     def _login(self) -> Dict[str, Any]:
         """Login to iBroadcast with username and password."""
@@ -75,6 +68,9 @@ class iBroadcastClient:
             # Store session data
             self.user_id = str(status_data["user"]["id"])
             self.token = status_data["user"]["token"]
+            
+            if "settings" in status_data and "streaming_server" in status_data["settings"]:
+                self.streaming_server = status_data["settings"]["streaming_server"]
 
             # Store session for future use
             self._save_session()
@@ -91,9 +87,14 @@ class iBroadcastClient:
 
     def _save_session(self) -> None:
         """Save session data for future use."""
-        # For now, we'll implement session persistence later
-        # This would save user_id and token to a session file
-        pass
+        if self.token and self.user_id:
+            token_data = {
+                "token": self.token,
+                "user_id": self.user_id,
+                "streaming_server": self.streaming_server,
+                "expires_in": 86400 * 30  # 30 days
+            }
+            token_manager.save_token(token_data)
 
     def authenticate(self) -> Dict[str, Any]:
         """Authenticate with iBroadcast API using username/password."""
@@ -145,7 +146,7 @@ class iBroadcastClient:
         except Exception as e:
             return {"status": "error", "message": f"Failed to fetch library: {e}"}
     
-    def get_stream_url(self, track_id: str) -> Dict[str, Any]:
+    def get_stream_url(self, track_id: str, track_path: str = None) -> Dict[str, Any]:
         """Get streaming URL for a track."""
         # Ensure we have a valid token
         if not token_manager.is_token_valid():
@@ -154,6 +155,18 @@ class iBroadcastClient:
                 return {"status": "error", "message": "Authentication required"}
 
         try:
+            # If we have the track path, construct the URL manually
+            if track_path:
+                client_name = settings.app_name.lower().replace(" ", "-")
+                expires = int(time.time() + 3600)  # 1 hour expiration
+                stream_url = f"{self.streaming_server}{track_path}?user_id={self.user_id}&Signature={self.token}&Expires={expires}&client={client_name}&version={settings.app_version}&file_id={track_id}"
+                return {
+                    "status": "success",
+                    "stream_url": stream_url,
+                    "track_info": {"id": track_id}
+                }
+
+            # Fallback to API request (which seems to fail, but keeping for compatibility)
             # iBroadcast stream request
             stream_data = {
                 "_token": self.token,
